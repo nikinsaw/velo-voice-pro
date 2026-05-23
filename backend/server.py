@@ -243,6 +243,20 @@ async def ride_socket(
                         )
             elif mtype == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+            elif mtype in ("webrtc_offer", "webrtc_answer", "webrtc_ice"):
+                # Direct peer-to-peer signalling forwarding. The server is a
+                # dumb relay: it does not parse SDP / ICE, only routes the
+                # blob to the addressed rider. `to` must be a rider_id.
+                to_id = msg.get("to")
+                if not to_id:
+                    continue
+                payload = {**msg, "from": rider_id}
+                target_ws = room.sockets.get(to_id)
+                if target_ws is not None:
+                    try:
+                        await target_ws.send_text(json.dumps(payload))
+                    except Exception:
+                        pass
     except WebSocketDisconnect:
         pass
     except Exception as e:  # noqa: BLE001

@@ -54,7 +54,8 @@
         {
           "cameraPermission": "Scan a rider's QR code to join their ride"
         }
-      ]
+      ],
+      "@config-plugins/react-native-webrtc"
     ],
     "experiments": {
       "typedRoutes": true

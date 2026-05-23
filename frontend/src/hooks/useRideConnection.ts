@@ -64,6 +64,8 @@ export function useRideConnection({ deviceId, name }: Args) {
   const onRemoteVolumeRef = useRef<
     ((volume: number, from: string) => void) | null
   >(null);
+  // WebRTC signaling pass-through (offer/answer/ice).
+  const onWebRTCMessageRef = useRef<((msg: any) => void) | null>(null);
 
   const setOnRemoteMusic = useCallback(
     (cb: typeof onRemoteMusicRef.current) => {
@@ -74,6 +76,12 @@ export function useRideConnection({ deviceId, name }: Args) {
   const setOnRemoteVolume = useCallback(
     (cb: typeof onRemoteVolumeRef.current) => {
       onRemoteVolumeRef.current = cb;
+    },
+    [],
+  );
+  const setOnWebRTCMessage = useCallback(
+    (cb: typeof onWebRTCMessageRef.current) => {
+      onWebRTCMessageRef.current = cb;
     },
     [],
   );
@@ -270,6 +278,14 @@ export function useRideConnection({ deviceId, name }: Args) {
     } catch {}
   }, []);
 
+  const sendWebRTC = useCallback((msg: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify(msg));
+    } catch {}
+  }, []);
+
   // Cleanup on unmount.
   useEffect(() => {
     return () => cleanupSocket();
@@ -298,11 +314,20 @@ export function useRideConnection({ deviceId, name }: Args) {
     sendMusic,
     sendVolume,
     sendRename,
+    sendWebRTC,
     setOnRemoteMusic,
     setOnRemoteVolume,
+    setOnWebRTCMessage,
     // Useful for the QR encoder.
     deepLink:
       code && Platform.OS !== "web"
+        ? `velovoice://ride/${code}`
+        : code
+          ? `velovoice://ride/${code}`
+          : null,
+  };
+}
+ Platform.OS !== "web"
         ? `velovoice://ride/${code}`
         : code
           ? `velovoice://ride/${code}`

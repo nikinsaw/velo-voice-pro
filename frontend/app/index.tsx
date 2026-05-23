@@ -71,6 +71,8 @@ const K_DUCK_DEPTH = "velo.duck_depth";
 const K_MODE = "velo.mode";
 const K_MIC_VOX = "velo.mic_vox";
 const K_RIDER_NAME = "velo.rider_name";
+const K_ICE_MODE = "velo.ice_mode";
+const K_VOICE_MESH = "velo.voice_mesh_enabled";
 
 const MIC_SUPPORTED = Platform.OS !== "web";
 
@@ -100,6 +102,10 @@ export default function VeloVoiceProDashboard() {
   const [micVoxEnabled, setMicVoxEnabled] = useState(false);
   const [micLevelPct, setMicLevelPct] = useState(0);
 
+  // ----- Voice mesh state -----
+  const [iceMode, setIceMode] = useState<IceMode>("stun");
+  const [voiceMeshEnabled, setVoiceMeshEnabled] = useState(false);
+
   const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ----- Boot: load persisted settings + rider name -----
@@ -111,11 +117,15 @@ export default function VeloVoiceProDashboard() {
       const md = await storage.getItem<string>(K_MODE, "open");
       const mv = await storage.getItem<boolean>(K_MIC_VOX, false);
       const rn = await storage.getItem<string>(K_RIDER_NAME, "");
+      const im = await storage.getItem<string>(K_ICE_MODE, "stun");
+      const vm = await storage.getItem<boolean>(K_VOICE_MESH, false);
       if (typeof v === "number") setVolume(v);
       if (typeof vx === "number") setVox(vx);
       if (dd === "light" || dd === "deep" || dd === "mute") setDuckDepth(dd);
       if (md === "open" || md === "ptt") setMode(md);
       if (typeof mv === "boolean") setMicVoxEnabled(mv && MIC_SUPPORTED);
+      if (im === "stun" || im === "turn") setIceMode(im);
+      if (typeof vm === "boolean") setVoiceMeshEnabled(vm);
 
       const initial =
         (typeof rn === "string" && rn.trim()) ||
@@ -196,6 +206,23 @@ export default function VeloVoiceProDashboard() {
   // ----- Real PTT recorder -----
   const ptt = usePttRecorder();
 
+  // ----- Voice Mesh (real WebRTC voice between phones) -----
+  // Mic is "hot" in Open Mic mode always, or while the PTT button is held.
+  const transmitMic = mode === "open" ? true : pttHeldByMe;
+  const meshRiders = useMemo(
+    () => ride.otherRiders.map((r) => ({ id: r.id, name: r.name })),
+    [ride.otherRiders],
+  );
+  const mesh = useVoiceMesh({
+    enabled: voiceMeshEnabled && ride.isConnected,
+    selfId: deviceId ?? "",
+    riders: meshRiders,
+    iceMode,
+    transmit: transmitMic,
+    sendSignal: ride.sendWebRTC,
+    setOnSignal: ride.setOnWebRTCMessage,
+  });
+
   // ----- Handlers: connection -----
   const openConnect = useCallback(() => {
     if (!riderName) {
@@ -266,6 +293,16 @@ export default function VeloVoiceProDashboard() {
       setMicLevelPct(0);
       setLocalSpeaking(false);
     }
+  }, []);
+
+  const handleIceModeChange = useCallback((m: IceMode) => {
+    setIceMode(m);
+    storage.setItem(K_ICE_MODE, m);
+  }, []);
+
+  const handleVoiceMeshToggle = useCallback((v: boolean) => {
+    setVoiceMeshEnabled(v);
+    storage.setItem(K_VOICE_MESH, v);
   }, []);
 
   // ----- Handlers: PTT -----
@@ -408,6 +445,21 @@ export default function VeloVoiceProDashboard() {
           onMicVoxToggle={handleMicVoxToggle}
           micLevelPct={micLevelPct}
           micVoxSupported={MIC_SUPPORTED}
+        />
+
+        {/* Voice Channel (real WebRTC voice across phones) */}
+        <VoiceChannelCard
+          supported={mesh.supported}
+          notSupportedReason={mesh.notSupportedReason}
+          enabled={voiceMeshEnabled}
+          onEnabledChange={handleVoiceMeshToggle}
+          active={mesh.active}
+          error={mesh.error}
+          peers={mesh.peers}
+          iceMode={iceMode}
+          onIceModeChange={handleIceModeChange}
+          transmitting={mesh.active && transmitMic}
+          isInRide={ride.isConnected}
         />
 
         {/* Footer */}
