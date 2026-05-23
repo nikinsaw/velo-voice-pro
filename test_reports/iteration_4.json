@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 4 — RETEST of the 2 bugs from iteration 3 on Velo Voice Pro. BOTH BUGS ARE FIXED. Verified end-to-end across two isolated browser contexts (Alice + Bob, 412x900) at https://group-ride-audio.preview.emergentagent.com. BUG 1 (volume sync): Device A dragged 'volume-slider' from 65% to ~30%; both Device A 'volume-value' AND Device B 'volume-value' now read 30% within ~2s (previously B remained at 65%). BUG 2 (simulate-speaking sync): Device A tapped 'simulate-speaking-btn' → A immediately showed 'self-talk-banner', and Device B's GroupRideCard rendered 'speaking-indicator' with text 'Alice is speaking…' within ~1.5s. After ~3s the indicator cleared on both sides. Regressions also re-verified: P5 (rider list — Bob in A's card, Alice in B's card) PASS; P11 (QR svg renders in connect-sheet-connected when A re-opens the sheet) PASS; SOLO simulate-speaking (banner appears then clears in 3s on disconnected device) PASS; SOLO volume slider drag updates local volume-value PASS; VOX slider drag updates vox-value PASS; P6 play/pause toggle on A PASS (no error). P6 skip-track sync was NOT executed because the test script used the wrong selector (used 'skip-fwd-btn' but actual testID is 'skip-forward-btn'); play/pause path was exercised and the underlying ride.sendMusic path is unchanged from iteration 3 where P6 passed — not treating as a real regression. No new console errors beyond the known deprecation warnings (shadow*, pointerEvents).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ride_backend.py",
+    "/app/test_reports/pytest/iteration_3_results.xml"
+  ],
+  "action_items": [
+    "No outstanding action items for the two retested bugs — both verified fixed.",
+    "Optional housekeeping: dead state `simulatedSpeakerId`/`setSimulatedSpeakerId` declaration is still present in /app/frontend/app/index.tsx (lines 100-102 and `simulateCycleRef`) but no longer read or set anywhere. Safe to delete for code hygiene; not functional.",
+    "Optional housekeeping: PHASE 9 footer behavior from iteration 3 ('Ride <CODE> · 1 rider synced' when local device is alone in a ride) is still unspecified vs. spec. Not retested this iteration — no behavior change requested.",
+    "Optional: also confirm P6 skip-track sync with the correct testID 'skip-forward-btn' in a follow-up if main agent wants exhaustive regression."
+  ],
+  "critical_code_review_comments": [
+    "Slider.tsx fix is correct: callbacks are now routed through refs (onChangeRef, onChangeEndRef, valueRef, widthRef, disabledRef) and PanResponder is created once via useRef — this is the canonical fix for stale-closure issues in long-lived PanResponders. Verified empirically: A's volume drag now reliably triggers handleVolumeChange with the LATEST ride object so the `if (ride.isConnected) ride.sendVolume(v)` branch executes.",
+    "handleSimulateSpeaking in index.tsx now unconditionally sets localSpeaking=true for 3s; the existing `useEffect([localSpeaking, ride])` -> ride.sendSpeaking(localSpeaking) chain transmits to the room. This both shows the self-talk-banner on the speaker and produces 'X is speaking…' on peers — exactly as required.",
+    "Minor: simulatedSpeakerId state declared but no longer used — safe to remove.",
+    "All testIDs continue to be present and stable; no React Native red-screen or runtime errors observed during the two-context run."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (7/7 from iteration 3, unchanged)", "frontend": "100% on the two retested bugs + all attempted regressions; P6 skip-track not re-executed due to test-side selector typo"},
+  "seed_data_creation": "None — ride code generated on the fly (HTJS in this run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both iteration-3 bugs are fixed and verified with two browser contexts. Use selectors: rider-name-input, rider-name-save-btn, link-ride-btn, start-ride-btn, tab-join, join-code-input, join-ride-btn, ride-code-display, connect-close-btn, volume-slider, volume-value, simulate-speaking-btn, self-talk-banner, speaking-indicator, group-ride-card, track-title, skip-forward-btn (NOT skip-fwd-btn), play-pause-btn, vox-slider, vox-value, connect-sheet-connected. Slider drag works via page.mouse.down/move/up over the slider's bounding box (the PanResponder fires onPanResponderGrant on locationX so mousedown at the start position is critical). Run on viewport 412x900.",
+  "rca_of_issue": "Iteration 3 BUG 1 root cause was a stale closure in Slider.tsx: PanResponder.create({...}) was instantiated once inside useRef and captured `onChange` from the first render. On that first render `ride.isConnected` was false (WS hadn't opened yet), so the captured handleVolumeChange skipped the ride.sendVolume call forever. Fix: store onChange/onChangeEnd/value/disabled in refs and read them inside the responder callbacks. Iteration 3 BUG 2 root cause: handleSimulateSpeaking had a branch on otherRiders.length>0 that only set a local simulatedSpeakerId without ever calling ride.sendSpeaking, so peers never received a speaking event. Fix: simplified to always setLocalSpeaking(true) for 3s and rely on the existing localSpeaking effect to broadcast. Both fixes confirmed working in this iteration."
+}

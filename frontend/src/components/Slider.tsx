@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -21,6 +21,15 @@ type SliderProps = {
 
 // Thick, glove-friendly slider built from scratch (no third-party deps).
 // 12px track + 28px white thumb on neon mint fill, per design guidelines.
+//
+// IMPORTANT: PanResponder is created once with useRef so it survives
+// re-renders. Because of that, we must NEVER capture `onChange` /
+// `onChangeEnd` directly in the responder closures — instead we keep them
+// in refs that are updated every render, so the latest parent callback
+// (with the latest closed-over state) is always invoked. This fixes a
+// real bug where downstream effects (e.g. sending a WebSocket event when
+// connected) were lost because the PanResponder held a stale callback
+// from the initial mount.
 export function Slider({
   value,
   onChange,
@@ -31,15 +40,34 @@ export function Slider({
 }: SliderProps) {
   const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
-  const startValueRef = useRef(value);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const onChangeEndRef = useRef(onChangeEnd);
+  const disabledRef = useRef(disabled);
   const lastHapticPct = useRef(value);
+
+  // Keep refs in sync with latest props every render.
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    onChangeEndRef.current = onChangeEnd;
+  }, [onChangeEnd]);
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
 
   const clamp = (n: number) => Math.max(0, Math.min(100, n));
 
   const updateFromTouch = (locationX: number) => {
     if (widthRef.current <= 0) return;
     const pct = clamp((locationX / widthRef.current) * 100);
-    onChange(Math.round(pct));
+    const rounded = Math.round(pct);
+    valueRef.current = rounded;
+    onChangeRef.current?.(rounded);
     // Subtle haptic tick every ~10% so riders can "feel" the drag.
     if (Math.abs(pct - lastHapticPct.current) > 10) {
       lastHapticPct.current = pct;
@@ -49,10 +77,9 @@ export function Slider({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled,
-      onMoveShouldSetPanResponder: () => !disabled,
+      onStartShouldSetPanResponder: () => !disabledRef.current,
+      onMoveShouldSetPanResponder: () => !disabledRef.current,
       onPanResponderGrant: (e: GestureResponderEvent) => {
-        startValueRef.current = value;
         updateFromTouch(e.nativeEvent.locationX);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       },
@@ -60,7 +87,7 @@ export function Slider({
         updateFromTouch(e.nativeEvent.locationX);
       },
       onPanResponderRelease: () => {
-        onChangeEnd?.(value);
+        onChangeEndRef.current?.(valueRef.current);
       },
     }),
   ).current;

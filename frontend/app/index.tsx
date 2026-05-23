@@ -177,8 +177,7 @@ export default function VeloVoiceProDashboard() {
     () => ride.otherRiders.find((r) => r.speaking),
     [ride.otherRiders],
   );
-  const ducked =
-    localSpeaking || remoteSpeaker !== undefined || simulatedSpeakerId !== null;
+  const ducked = localSpeaking || remoteSpeaker !== undefined;
   const duckFactor = ducked ? DUCK_SCALE[duckDepth] : 1.0;
 
   // ----- Real audio playback (bundled MP3s) -----
@@ -286,27 +285,18 @@ export default function VeloVoiceProDashboard() {
     if (MIC_SUPPORTED) await ptt.stopAndPlayback();
   }, [ptt]);
 
-  // ----- Handlers: simulate (works whether or not we're connected) -----
+  // ----- Handlers: simulate ("me" speaks for 3s; broadcasts when connected) -----
+  // Always simulating "me" so that when in a ride the peers actually see the
+  // glow + ducking via the WebSocket speaking event. In solo mode this just
+  // ducks the local music for 3s.
   const handleSimulateSpeaking = useCallback(() => {
     if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
-    const speakers = ride.otherRiders;
-    if (speakers.length === 0) {
-      // Solo mode → "you" speak briefly
-      setLocalSpeaking(true);
-      speakingTimerRef.current = setTimeout(() => {
-        setLocalSpeaking(false);
-        speakingTimerRef.current = null;
-      }, 3000);
-      return;
-    }
-    const speaker = speakers[simulateCycleRef.current % speakers.length];
-    simulateCycleRef.current += 1;
-    setSimulatedSpeakerId(speaker.id);
+    setLocalSpeaking(true);
     speakingTimerRef.current = setTimeout(() => {
-      setSimulatedSpeakerId(null);
+      setLocalSpeaking(false);
       speakingTimerRef.current = null;
     }, 3000);
-  }, [ride.otherRiders]);
+  }, []);
 
   // ----- Save name from modal -----
   const handleSaveName = useCallback((name: string) => {
@@ -322,8 +312,7 @@ export default function VeloVoiceProDashboard() {
     return ride.otherRiders.map((r) => ({ id: r.id, name: r.name }));
   }, [ride.isConnected, ride.otherRiders]);
 
-  const speakingIdForCard =
-    simulatedSpeakerId ?? remoteSpeaker?.id ?? null;
+  const speakingIdForCard = remoteSpeaker?.id ?? null;
 
   // ----- Render -----
   return (
