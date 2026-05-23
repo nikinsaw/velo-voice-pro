@@ -3,65 +3,63 @@
 ## Summary
 Single-screen Expo mobile dashboard for cyclists to manage shared audio and an intercom while wearing Bluetooth earphones. Ultra-minimalist obsidian + neon-mint theme, glove-friendly hit targets, no complex navigation.
 
-## Scope (v1)
-- Frontend-only prototype (no backend, no real Bluetooth/audio per user choice).
-- All states (Bluetooth scan, group, playback, speaking event) are simulated.
-- Settings persisted locally via AsyncStorage (`@/src/utils/storage`).
+## Scope
+- Frontend-only (no backend, all settings persisted locally via AsyncStorage).
+- **Real local MP3 playback** via expo-audio (3 bundled sample tracks under `/assets/audio/`).
+- **Real microphone VOX** (Voice Activation) via expo-audio recorder metering, gated by a user-controlled "Enable Mic VOX" toggle so the mic is never on without consent.
+- **Real Push-to-Talk** record + playback round-trip on the local device.
+- **Bluetooth pairing remains simulated** in Expo Go preview — real BLE requires a dev build (`react-native-ble-plx`) and is wired as a service contract (`/src/services/bluetoothService.ts`) ready for swap.
 
-## Screens & Components
-**Single screen:** `/app/frontend/app/index.tsx`
+## Single screen — `/app/frontend/app/index.tsx`
 
 ### A. Group Ride card (`GroupRideCard`)
-- Group status header ("2 Riders Linked") + animated status dot.
+- Status header ("2 Riders Linked") + animated pulsing dot.
 - Rider chips with avatar + name; speaking chip gets neon ring + soft fill.
-- "Link Ride · Add Rider" pill button → simulates ~1.8s scan → adds next rider from pool (Mia → Jordan → Kai → Rio).
+- "Link Ride · Add Rider" button → calls `scanForNextRider(currentRiders)` from the bluetooth service (simulated ~1.8 s; same API contract for real BLE later).
 - Intercom Mode segmented toggle: **Open Mic** ↔ **Push-to-Talk**.
-- In PTT mode: "Hold to Talk" button (haptic on press, flips to "Transmitting…").
+- In PTT mode: "Hold to Talk" button (haptic on press) → starts real mic recording on press-in → stops + plays back on release.
 - In Open Mic mode: hint banner explaining VOX gate is active.
-- When any rider is speaking → neon pulsing ring wraps the card and a "X is speaking…" banner appears with animated bars.
 
 ### B. Now Streaming card (`NowStreamingCard`)
-- Album art (synthwave) + song title + artist + album.
-- 24-bar animated waveform (reanimated) — ducks (compresses) when ducking is active.
-- Transport: Skip-back · Play/Pause (76pt glowing neon) · Skip-forward.
-- Group Volume slider with live `%` value.
-- 3 mock tracks cycle on skip.
+- Album art + song title + artist + album.
+- 24-bar animated waveform — ducks (compresses) when ducking is active.
+- Transport: Skip-back · Play/Pause (76 pt glowing neon) · Skip-forward.
+- Group Volume slider with live `%` value (drives real player volume).
+- 3 bundled MP3s cycle on skip (`sample1.mp3`, `sample2.mp3`, `sample3.mp3`).
 
 ### C. Duck System card (`DuckSystemCard`)
-- VOX (Voice Activation) slider 0–100 with contextual label (WHISPER / NORMAL / LOUD ROAD / WINDY).
+- "Enable Mic VOX" toggle row with live mic level bar + threshold marker (shown when enabled).
+- VOX threshold slider 0–100 with contextual label (WHISPER / NORMAL / LOUD ROAD / WINDY).
 - Music Ducking Depth segmented: **-50% / -80% / Mute**.
-- "Simulate Rider Speaking" test button → cycles through linked riders, triggers 3s speaking event.
+- "Simulate Rider Speaking" test button → cycles through linked riders, 3 s speaking event.
 
-## Behavior Rules
-| Trigger | Effect |
-|---|---|
-| Tap Link Ride | Scanning state 1.8s → adds next nearby rider |
-| Tap Simulate Speaking | Picks next rider (round-robin), sets speaking state for 3s, music waveform ducks by selected depth, neon ring pulses around Group card |
-| Tap PTT button (press-in) | "Me" becomes speaker, self-talk banner appears at top, music ducks |
-| Slider drags | Light haptic ticks every ~10% |
-| Volume/VOX/Mode/Duck change | Persisted to AsyncStorage |
+## Real-functionality wiring
 
-## Design System (from `/app/design_guidelines.json`)
-- BG `#0A0A0A`, surface `#161618`, elevated `#222225`
-- Primary neon `#00FFB2` with `rgba(0,255,178,0.5)` glow
-- Card radius 24, pill 999, hit targets 56–76pt
-- Bold uppercase headings with wide letter-spacing for outdoor legibility
+| Feature | Hook / Service | Notes |
+|---|---|---|
+| Music playback | `useTrackPlayer` → `useAudioPlayer` from expo-audio | Looped, real volume modulation, real `replace()` on skip. |
+| Music ducking | `duckFactor` applied to `player.volume` | When `speakingRiderId !== null`, factor = `DUCK_SCALE[duckDepth]`. |
+| Mic VOX | `useVoxMeter` → `useAudioRecorder` (LOW_QUALITY + isMeteringEnabled) | dBFS converted to 0–100; hysteresis prevents flicker; auto-stops when toggle off. |
+| Push-to-Talk | `usePttRecorder` → `useAudioRecorder` HIGH_QUALITY + `createAudioPlayer` | Records while held, plays the file back on release. |
+| Bluetooth scan | `scanForNextRider` (simulated, async) | Same contract as future real BLE; only swap the implementation. |
 
-## Out of Scope (v1)
-- Real Bluetooth scanning / pairing
-- Real local MP3 scanning / playback (planned for v2 with file-system + expo-audio)
-- YouTube Music / streaming-service integration (v2)
-- Multi-screen navigation, settings sub-pages
+## Permissions
+- iOS `NSMicrophoneUsageDescription`: "Used for intercom voice and VOX gating"
+- Android `RECORD_AUDIO`
+- `expo-audio` plugin configures both at build time.
 
-## Test IDs
-All interactive elements expose kebab-case `testID`s (e.g. `link-ride-btn`, `play-pause-btn`, `volume-slider`, `vox-slider`, `duck-depth-deep`, `simulate-speaking-btn`, `ptt-button`).
+## Platform support
+- **Expo Go** (Android / iOS): full real audio + mic + PTT.
+- **Web preview**: real audio playback may be blocked by autoplay restrictions; mic VOX is intentionally disabled (`Platform.OS === 'web'`).
+- **Bluetooth pairing**: needs a dev/prod build before the simulation can be swapped for real BLE.
 
-## Files
-- `app/index.tsx` — dashboard composition + state
-- `src/theme.ts` — design tokens
-- `src/components/GroupRideCard.tsx`
-- `src/components/NowStreamingCard.tsx`
-- `src/components/DuckSystemCard.tsx`
-- `src/components/Slider.tsx` — custom glove-friendly slider
-- `src/components/SegmentedToggle.tsx`
-- `src/components/Waveform.tsx` — animated bars (reanimated)
+## Persistence (AsyncStorage)
+- `velo.volume`, `velo.vox`, `velo.duck_depth`, `velo.mode`, `velo.mic_vox`
+
+## Test IDs (kebab-case)
+`dashboard-scroll`, `app-header`, `group-ride-card`, `group-ride-status`, `rider-chip-<id>`, `link-ride-btn`, `intercom-mode-open`, `intercom-mode-ptt`, `ptt-button`, `open-mic-hint`, `now-streaming-card`, `track-title`, `track-artist`, `play-pause-btn`, `skip-forward-btn`, `skip-back-btn`, `volume-slider`, `volume-value`, `duck-system-card`, `mic-vox-toggle`, `vox-slider`, `vox-value`, `duck-depth-light`, `duck-depth-deep`, `duck-depth-mute`, `simulate-speaking-btn`, `speaking-indicator`, `self-talk-banner`.
+
+## Future (deferred, ready to drop in)
+- Real BLE — replace `scanForNextRider` body with `BleManager.startDeviceScan` (config plugin already documented in the service file).
+- YouTube Music / Spotify shared streaming (v2).
+- Multi-rider voice mixing across BLE.
