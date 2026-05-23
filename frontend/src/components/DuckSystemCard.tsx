@@ -28,6 +28,10 @@ type Props = {
   onDuckDepthChange: (d: DuckDepth) => void;
   speaking: boolean;
   onSimulateSpeaking: () => void;
+  micVoxEnabled: boolean;
+  onMicVoxToggle: (v: boolean) => void;
+  micLevelPct: number; // live 0..100 mic loudness when enabled
+  micVoxSupported: boolean;
 };
 
 export function DuckSystemCard({
@@ -37,6 +41,10 @@ export function DuckSystemCard({
   onDuckDepthChange,
   speaking,
   onSimulateSpeaking,
+  micVoxEnabled,
+  onMicVoxToggle,
+  micLevelPct,
+  micVoxSupported,
 }: Props) {
   const voxLabel =
     vox < 25
@@ -66,7 +74,79 @@ export function DuckSystemCard({
         without losing ambient awareness.
       </Text>
 
-      {/* VOX */}
+      {/* Mic VOX toggle row */}
+      <TouchableOpacity
+        testID="mic-vox-toggle"
+        disabled={!micVoxSupported}
+        activeOpacity={0.85}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onMicVoxToggle(!micVoxEnabled);
+        }}
+        style={[
+          styles.micRow,
+          micVoxEnabled && styles.micRowActive,
+          !micVoxSupported && { opacity: 0.5 },
+        ]}
+      >
+        <View
+          style={[
+            styles.micIconWrap,
+            micVoxEnabled && { backgroundColor: colors.primary },
+          ]}
+        >
+          <Ionicons
+            name={micVoxEnabled ? "mic" : "mic-off"}
+            size={18}
+            color={micVoxEnabled ? colors.background : colors.textPrimary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.micTitle}>
+            {micVoxEnabled ? "MIC VOX · LIVE" : "ENABLE MIC VOX"}
+          </Text>
+          <Text style={styles.micSub}>
+            {micVoxSupported
+              ? micVoxEnabled
+                ? "Real mic drives auto-duck"
+                : "Tap to listen for your voice"
+              : "Mic not available on this device"}
+          </Text>
+        </View>
+        {/* Mini live level bar */}
+        {micVoxEnabled ? (
+          <View style={styles.levelTrack}>
+            <View
+              style={[
+                styles.levelFill,
+                {
+                  width: `${Math.min(100, micLevelPct)}%`,
+                  backgroundColor:
+                    micLevelPct >= vox ? colors.primary : colors.textSecondary,
+                },
+              ]}
+            />
+            {/* Threshold marker */}
+            <View
+              style={[
+                styles.levelMarker,
+                { left: `${Math.min(100, Math.max(0, vox))}%` },
+              ]}
+            />
+          </View>
+        ) : (
+          <View style={styles.toggleDot}>
+            <View
+              style={[
+                styles.toggleDotInner,
+                micVoxEnabled && { backgroundColor: colors.primary },
+              ]}
+            />
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* VOX threshold */}
       <View style={styles.sliderBlock}>
         <View style={styles.sliderLabelRow}>
           <View style={styles.sliderLabelLeft}>
@@ -181,6 +261,77 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: "500",
+  },
+  micRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.control,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    minHeight: sizes.hitTarget,
+  },
+  micRowActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  micIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceElevated,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  micTitle: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.1,
+  },
+  micSub: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  toggleDot: {
+    width: 38,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceElevated,
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  toggleDotInner: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.textSecondary,
+  },
+  levelTrack: {
+    width: 70,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  levelFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 7,
+  },
+  levelMarker: {
+    position: "absolute",
+    top: -2,
+    bottom: -2,
+    width: 2,
+    backgroundColor: colors.textPrimary,
   },
   sliderBlock: {
     gap: spacing.sm,

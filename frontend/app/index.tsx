@@ -6,6 +6,7 @@ import {
   StyleSheet,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -17,14 +18,21 @@ import {
   Rider,
   IntercomMode,
 } from "@/src/components/GroupRideCard";
-import { NowStreamingCard, Track } from "@/src/components/NowStreamingCard";
+import { NowStreamingCard } from "@/src/components/NowStreamingCard";
 import {
   DuckSystemCard,
   DuckDepth,
   DUCK_SCALE,
 } from "@/src/components/DuckSystemCard";
+import {
+  useTrackPlayer,
+  type LocalTrack,
+} from "@/src/hooks/useTrackPlayer";
+import { useVoxMeter } from "@/src/hooks/useVoxMeter";
+import { usePttRecorder } from "@/src/hooks/usePttRecorder";
+import { scanForNextRider } from "@/src/services/bluetoothService";
 
-// Mock rider/track data — local-only (no backend).
+// Initial connected riders (already-paired from a previous ride).
 const ALEX_AVATAR =
   "https://images.unsplash.com/photo-1545575439-3261931f52f1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjeWNsaXN0JTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc5NTE4MzIwfDA&ixlib=rb-4.1.0&q=85";
 const SARAH_AVATAR =
@@ -35,34 +43,31 @@ const INITIAL_RIDERS: Rider[] = [
   { id: "sarah", name: "Sarah", avatar: SARAH_AVATAR },
 ];
 
-const NEARBY_POOL: Rider[] = [
-  { id: "mia", name: "Mia" },
-  { id: "jordan", name: "Jordan" },
-  { id: "kai", name: "Kai" },
-  { id: "rio", name: "Rio" },
-];
-
 const ALBUM_ART =
   "https://images.unsplash.com/photo-1753170351064-6dd30ef64099?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxlbGVjdHJvbmljJTIwc3ludGh3YXZlJTIwYWxidW0lMjBjb3ZlciUyMGFydHxlbnwwfHx8fDE3Nzk1MTgzMjB8MA&ixlib=rb-4.1.0&q=85";
 
-const TRACKS: Track[] = [
+// Bundled MP3s under /app/frontend/assets/audio/.
+const TRACKS: LocalTrack[] = [
   {
     title: "Neon Highway",
-    artist: "The Drift Collective",
+    artist: "SoundHelix Demo",
     album: "Asphalt Pulse",
     art: ALBUM_ART,
+    source: require("../assets/audio/sample1.mp3"),
   },
   {
     title: "Pedal Sequence",
-    artist: "Tempo Riders",
+    artist: "SoundHelix Demo",
     album: "Cadence",
     art: ALBUM_ART,
+    source: require("../assets/audio/sample2.mp3"),
   },
   {
     title: "Headwind Hymn",
-    artist: "Aero Theory",
+    artist: "SoundHelix Demo",
     album: "Slipstream",
     art: ALBUM_ART,
+    source: require("../assets/audio/sample3.mp3"),
   },
 ];
 
@@ -71,6 +76,10 @@ const K_VOLUME = "velo.volume";
 const K_VOX = "velo.vox";
 const K_DUCK_DEPTH = "velo.duck_depth";
 const K_MODE = "velo.mode";
+const K_MIC_VOX = "velo.mic_vox";
+
+// Web preview can't open the mic via expo-audio.
+const MIC_SUPPORTED = Platform.OS !== "web";
 
 export default function VeloVoiceProDashboard() {
   // ----- Connection / Intercom state -----
@@ -88,10 +97,11 @@ export default function VeloVoiceProDashboard() {
   const [vox, setVox] = useState(50);
   const [duckDepth, setDuckDepth] = useState<DuckDepth>("deep");
   const [speakingRiderId, setSpeakingRiderId] = useState<string | null>(null);
+  const [micVoxEnabled, setMicVoxEnabled] = useState(false);
+  const [micLevelPct, setMicLevelPct] = useState(0);
 
   const simulateCycleRef = useRef(0);
   const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load persisted settings on mount.
   useEffect(() => {
@@ -100,10 +110,12 @@ export default function VeloVoiceProDashboard() {
       const vx = await storage.getItem<number>(K_VOX, 50);
       const dd = await storage.getItem<string>(K_DUCK_DEPTH, "deep");
       const md = await storage.getItem<string>(K_MODE, "open");
+      const mv = await storage.getItem<boolean>(K_MIC_VOX, false);
       if (typeof v === "number") setVolume(v);
       if (typeof vx === "number") setVox(vx);
       if (dd === "light" || dd === "deep" || dd === "mute") setDuckDepth(dd);
       if (md === "open" || md === "ptt") setMode(md);
+      if (typeof mv === "boolean") setMicVoxEnabled(mv && MIC_SUPPORTED);
     })();
   }, []);
 
@@ -111,43 +123,86 @@ export default function VeloVoiceProDashboard() {
   useEffect(() => {
     return () => {
       if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
-      if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
     };
   }, []);
 
+  // ----- Real audio playback -----
+  // `duckFactor` is what we multiply the user volume by when a rider speaks.
+  const ducked = speakingRiderId !== null;
+  const duckFactor = ducked ? DUCK_SCALE[duckDepth] : 1.0;
+
+  useTrackPlayer(TRACKS, trackIndex, volume, duckFactor, playing);
+
+  // ----- Real mic VOX -----
+  const onVoxActiveChange = useCallback(
+    (active: boolean) => {
+      // Don't override an in-progress simulate / PTT event.
+      if (active) {
+        // The mic detected the local user speaking → trigger "me" speaking
+        // so the duck system reacts and the UI shows the self-talk banner.
+        setSpeakingRiderId("me");
+      } else {
+        setSpeakingRiderId((cur) => (cur === "me" ? null : cur));
+      }
+    },
+    [],
+  );
+
+  const onVoxSample = useCallback((pct: number) => {
+    setMicLevelPct(pct);
+  }, []);
+
+  useVoxMeter({
+    enabled: micVoxEnabled && mode === "open" && !pttHeldByMe,
+    thresholdPct: vox,
+    onActiveChange: onVoxActiveChange,
+    onSample: onVoxSample,
+  });
+
+  // ----- Real PTT recorder -----
+  const ptt = usePttRecorder();
+
   // ----- Handlers -----
-  const handleLinkRide = useCallback(() => {
+  const handleLinkRide = useCallback(async () => {
     if (scanning) return;
     setScanning(true);
-    scanTimerRef.current = setTimeout(() => {
-      setRiders((prev) => {
-        // Find the first nearby rider not already in the group.
-        const next = NEARBY_POOL.find(
-          (r) => !prev.some((p) => p.id === r.id),
-        );
-        return next ? [...prev, next] : prev;
-      });
-      setScanning(false);
-    }, 1800);
-  }, [scanning]);
+    const result = await scanForNextRider(riders);
+    setScanning(false);
+    if (result.ok) {
+      setRiders((prev) =>
+        prev.some((p) => p.id === result.rider.id)
+          ? prev
+          : [...prev, result.rider],
+      );
+    } else if (result.reason === "no-new-riders") {
+      Alert.alert(
+        "No riders nearby",
+        "Everyone within Bluetooth range is already linked.",
+      );
+    }
+  }, [scanning, riders]);
 
   const handleModeChange = useCallback((m: IntercomMode) => {
     setMode(m);
     storage.setItem(K_MODE, m);
-    // Releasing PTT button when switching to open mic.
     if (m === "open") setPttHeldByMe(false);
   }, []);
 
-  const handlePttPressIn = useCallback(() => {
+  const handlePttPressIn = useCallback(async () => {
     setPttHeldByMe(true);
-    // Self-speaking: light ducking + my own indicator.
     setSpeakingRiderId("me");
-  }, []);
+    if (MIC_SUPPORTED) {
+      await ptt.start();
+    }
+  }, [ptt]);
 
-  const handlePttPressOut = useCallback(() => {
+  const handlePttPressOut = useCallback(async () => {
     setPttHeldByMe(false);
     setSpeakingRiderId((cur) => (cur === "me" ? null : cur));
-  }, []);
+    if (MIC_SUPPORTED) {
+      await ptt.stopAndPlayback();
+    }
+  }, [ptt]);
 
   const handlePlayPauseToggle = useCallback(() => {
     setPlaying((p) => !p);
@@ -178,8 +233,14 @@ export default function VeloVoiceProDashboard() {
     storage.setItem(K_DUCK_DEPTH, d);
   }, []);
 
-  // Simulate a rider speaking — cycles through the linked riders so the
-  // device "recognizes" whose mic is hot (per user clarification).
+  const handleMicVoxToggle = useCallback((v: boolean) => {
+    setMicVoxEnabled(v);
+    storage.setItem(K_MIC_VOX, v);
+    if (!v) setMicLevelPct(0);
+  }, []);
+
+  // Simulate rider speaking — cycles through linked riders so the device
+  // "recognizes" the right rider. Used when mic VOX is off, or in PTT mode.
   const handleSimulateSpeaking = useCallback(() => {
     if (riders.length === 0) return;
     if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
@@ -192,12 +253,6 @@ export default function VeloVoiceProDashboard() {
     }, 3000);
   }, [riders]);
 
-  const ducked = speakingRiderId !== null;
-  const duckScale = DUCK_SCALE[duckDepth];
-
-  // Riders displayed include "me" pseudo-rider only conceptually; we still
-  // pass the real riders array. The "me" speaking case is reflected via
-  // the speaking banner ("You are speaking…") which we substitute below.
   const ridersForCard = riders;
   const speakingIdForCard =
     speakingRiderId === "me" ? null : speakingRiderId;
@@ -268,7 +323,7 @@ export default function VeloVoiceProDashboard() {
           playing={playing}
           volume={volume}
           ducked={ducked}
-          duckScale={duckScale}
+          duckScale={DUCK_SCALE[duckDepth]}
           onPlayPauseToggle={handlePlayPauseToggle}
           onSkipForward={handleSkipForward}
           onSkipBack={handleSkipBack}
@@ -283,12 +338,16 @@ export default function VeloVoiceProDashboard() {
           onDuckDepthChange={handleDuckDepthChange}
           speaking={ducked}
           onSimulateSpeaking={handleSimulateSpeaking}
+          micVoxEnabled={micVoxEnabled}
+          onMicVoxToggle={handleMicVoxToggle}
+          micLevelPct={micLevelPct}
+          micVoxSupported={MIC_SUPPORTED}
         />
 
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Prototype mode · simulated Bluetooth & audio
+            Real local audio + mic VOX · BLE pairing on dev build
           </Text>
         </View>
       </ScrollView>
