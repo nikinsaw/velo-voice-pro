@@ -96,15 +96,11 @@ export default function VeloVoiceProDashboard() {
 
   const [vox, setVox] = useState(50);
   const [duckDepth, setDuckDepth] = useState<DuckDepth>("deep");
-  const [localSpeaking, setLocalSpeaking] = useState(false); // me speaking (mic or PTT)
-  const [simulatedSpeakerId, setSimulatedSpeakerId] = useState<string | null>(
-    null,
-  );
+  const [localSpeaking, setLocalSpeaking] = useState(false); // me speaking (mic, PTT, or simulate)
   const [micVoxEnabled, setMicVoxEnabled] = useState(false);
   const [micLevelPct, setMicLevelPct] = useState(0);
 
   const speakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const simulateCycleRef = useRef(0);
 
   // ----- Boot: load persisted settings + rider name -----
   useEffect(() => {
