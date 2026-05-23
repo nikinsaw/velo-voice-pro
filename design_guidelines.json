@@ -1,0 +1,91 @@
+{
+  "theme": "dark",
+  "archetype": "2 (Performance Pro)",
+  "colors": {
+    "background": "#0A0A0A",
+    "surface": "#161618",
+    "surface_elevated": "#222225",
+    "primary": "#00FFB2",
+    "primary_glow": "rgba(0, 255, 178, 0.5)",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#A1A1AA",
+    "danger": "#FF3B30",
+    "overlay": "rgba(10, 10, 10, 0.8)"
+  },
+  "typography": {
+    "heading_font": "Bebas Neue, sans-serif",
+    "body_font": "Manrope, sans-serif",
+    "scale": {
+      "h1": "text-5xl font-bebas tracking-tighter uppercase",
+      "h2": "text-3xl font-bebas tracking-tight uppercase",
+      "h3": "text-xl font-bold font-manrope",
+      "body": "text-base font-medium font-manrope text-[#A1A1AA]",
+      "label": "text-sm font-bold tracking-widest uppercase font-manrope text-[#A1A1AA]"
+    },
+    "imports": "@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;800&display=swap');"
+  },
+  "spacing_and_layout": {
+    "container": "max-w-md mx-auto h-[100dvh] flex flex-col bg-[#0A0A0A] overflow-y-auto pb-8",
+    "card_padding": "p-5",
+    "glove_friendly_target": "min-h-[56px] min-w-[56px]",
+    "gap": "gap-4"
+  },
+  "components": {
+    "cards": {
+      "style": "bg-[#161618] rounded-[24px] border border-white/5",
+      "instructions": "Use rounded-[24px] for the YouTube Music aesthetic. Keep borders subtle (1px white/5) to separate from the deep obsidian background."
+    },
+    "buttons": {
+      "primary": "bg-[#00FFB2] text-black font-extrabold h-14 rounded-full flex items-center justify-center text-lg active:scale-95 transition-transform uppercase tracking-wide",
+      "outline": "border-2 border-white/10 text-white h-14 rounded-full flex items-center justify-center font-bold active:bg-white/5 transition-colors",
+      "play_pause": "w-20 h-20 rounded-full bg-[#00FFB2] text-black flex items-center justify-center shadow-[0_0_20px_rgba(0,255,178,0.4)] active:scale-90 transition-all",
+      "skip": "w-14 h-14 flex items-center justify-center text-white hover:bg-white/10 rounded-full active:scale-90 transition-all"
+    },
+    "sliders": {
+      "container": "relative w-full flex items-center h-14",
+      "track": "h-3 bg-white/10 rounded-full w-full relative overflow-hidden",
+      "fill": "h-full bg-[#00FFB2] absolute left-0 top-0",
+      "thumb": "w-7 h-7 bg-white rounded-full shadow-lg border-4 border-[#161618] absolute top-1/2 -translate-y-1/2 -ml-3.5",
+      "instructions": "Use custom thick sliders (h-3 track) for glove visibility, not native thin range inputs."
+    },
+    "toggles": {
+      "container": "bg-[#0A0A0A] p-1.5 rounded-full flex relative h-[60px] items-center border border-white/10",
+      "option": "flex-1 flex items-center justify-center z-10 font-bold text-sm tracking-wide transition-colors",
+      "active_bg": "absolute bg-[#222225] border border-white/5 rounded-full h-[48px] transition-all duration-300 shadow-md"
+    }
+  },
+  "animations": {
+    "speaking_glow": "animate-pulse shadow-[0_0_25px_rgba(0,255,178,0.6)] border-[#00FFB2]",
+    "music_ducking": "scale-y-[0.3] opacity-30 transition-all duration-300 ease-out",
+    "waveform_container": "flex items-end gap-1 h-10 overflow-hidden",
+    "waveform_bar": "w-1.5 bg-[#00FFB2] rounded-t-sm origin-bottom transition-transform duration-150"
+  },
+  "media": {
+    "album_art": {
+      "url": "https://images.unsplash.com/photo-1753170351064-6dd30ef64099?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxlbGVjdHJvbmljJTIwc3ludGh3YXZlJTIwYWxidW0lMjBjb3ZlciUyMGFydHxlbnwwfHx8fDE3Nzk1MTgzMjB8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract neon synthwave album cover for the Now Streaming card."
+    },
+    "riders": [
+      {
+        "name": "Alex",
+        "url": "https://images.unsplash.com/photo-1545575439-3261931f52f1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjeWNsaXN0JTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc5NTE4MzIwfDA&ixlib=rb-4.1.0&q=85"
+      },
+      {
+        "name": "Sarah",
+        "url": "https://images.unsplash.com/photo-1622314873267-d44e38cdd652?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwyfHxjeWNsaXN0JTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc5NTE4MzIwfDA&ixlib=rb-4.1.0&q=85"
+      }
+    ]
+  },
+  "testing": {
+    "requirements": "All interactive elements MUST include a data-testid attribute in kebab-case (e.g. data-testid=\"link-ride-btn\", data-testid=\"play-pause-btn\")."
+  },
+  "instructions_to_main_agent": [
+    "Build a single-page reactive dashboard simulating a mobile app view.",
+    "Restrict the main layout to 'max-w-md mx-auto' to mimic a mobile phone screen on desktop, filling the vertical height.",
+    "Use Lucide React for bold, legible UI icons (e.g., Play, Pause, SkipForward, Mic, Headphones).",
+    "Implement the 'Rider Speaking' state: Include a prominent test button 'Simulate Rider Speaking'. When active, wrap the intercom/rider section in a glowing Neon Mint border, show an overlay/indicator 'Alex is speaking...', and reduce the height/opacity of the music waveform visualizer to simulate 'ducking'.",
+    "Make sure all Sliders (VOX, Volume, Ducking) and buttons are oversized (min-height 56px) to meet the 'glove-friendly' requirement.",
+    "Use 'Bebas Neue' for large headings and 'Manrope' for body copy. Extend Tailwind config to support these fonts.",
+    "Construct the UI using semantic HTML grouped into cards. Include 1. Group Ride status, 2. Now Streaming controller, and 3. Audio settings."
+  ]
+}
