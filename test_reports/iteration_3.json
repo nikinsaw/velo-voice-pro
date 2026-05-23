@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 3 — Multi-device ride sync. Backend: 7/7 pytest tests pass (REST /api/, /api/ride/create, /api/ride/{code}, WS relay covering rider_joined/left, music play/pause/skip, music_volume, speaking, rename). Frontend: Phases 1, 2, 4, 5, 6, 9 (GroupRide), 10, 11 PASS on mobile viewport 412x900 using 2 isolated browser contexts (Alice + Bob). Two REAL bugs found in WS-driven sync on the frontend: (1) PHASE 7 — group volume slider drag on Device A updates A locally to 30% but Device B's volume-value stays at 65% (sync NOT firing). (2) PHASE 8 — Device A tapping simulate-speaking-btn while in a ride does NOT cause Device B to see 'speaking-indicator' / 'Alice is speaking…'. RCA: the simulate-speaking handler, when otherRiders > 0, only flips a LOCAL simulatedSpeakerId for a remote rider — it never calls ride.sendSpeaking(true), so no event is transmitted. PHASE 9 partial mismatch with the spec: when B leaves, A's GroupRideCard correctly returns to SOLO/'No riders linked yet', but A's footer reads 'Ride <CODE> · 1 rider synced' (A is still connected alone) — not 'Tap LINK RIDE…'. Treating as spec-vs-impl note, not a bug. QR (svg in connect-sheet-connected) renders, QR Scan sheet shows web fallback 'Camera not available'. No console errors beyond known shadow*/pointerEvents deprecation warnings.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "PHASE 7 group volume sync (A → B)", "issue": "A's volume slider drag to 30% does NOT propagate to B (B remains 65%). On A handleVolumeChange runs setVolume + storage.setItem + ride.sendVolume — but B's volume-value never updates. Suspect: (a) NowStreamingCard's slider not firing onVolumeChange on web drag, or (b) onRemoteVolumeRef not bound when B receives music_volume event. Backend WS test confirms server broadcasts music_volume correctly, so issue is on client.", "affected_testIDs": ["volume-slider", "volume-value"]},
+      {"flow": "PHASE 8 speaking sync (A → B via simulate-speaking)", "issue": "On Device A in a connected ride, tapping simulate-speaking-btn sets a LOCAL simulatedSpeakerId pointing to one of the OTHER riders (B), but never calls ride.sendSpeaking(true). Therefore B's GroupRideCard never shows speaking-indicator / 'Alice is speaking…'. Fix: in handleSimulateSpeaking, when ride.isConnected, set localSpeaking=true (the existing localSpeaking → ride.sendSpeaking effect will transmit), or directly call ride.sendSpeaking(true)/false with a timeout — matching the solo branch.", "affected_testIDs": ["simulate-speaking-btn", "speaking-indicator"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ride_backend.py",
+    "/app/test_reports/pytest/iteration_3_results.xml"
+  ],
+  "action_items": [
+    "Fix volume sync: ensure NowStreamingCard's volume-slider onValueChange wires through to ride.sendVolume on Device A AND that onRemoteVolume listener applies the incoming value on Device B. Verify ws.onmessage 'music_volume' branch actually invokes the registered callback (the setOnRemoteVolume ref pattern depends on the effect with [ride] dep running before any event arrives — confirm).",
+    "Fix simulate-speaking when connected: also call ride.sendSpeaking(true) for the duration (or simply set localSpeaking=true regardless of otherRiders.length so the existing useEffect transmits to room). Currently only the SOLO branch transmits.",
+    "Clarify PHASE 9 footer behavior: when remote riders leave but the local device is still in the ride alone, decide whether footer should switch to 'Tap LINK RIDE to start or join a group' or remain 'Ride <CODE> · 1 rider synced'. Current impl shows the latter; spec says the former."
+  ],
+  "critical_code_review_comments": [
+    "useRideConnection.ts: onclose handler unconditionally schedules a reconnect on non-clean close — this is fine but combined with status='error' it could briefly flash the user; consider only setting reconnecting in that path.",
+    "Server _generate_code() has a 20-try cap but the room is allocated inside the loop and a slot is taken before the WS connects — works fine for prototype, but a stale empty room can persist if create_ride is called and the client never opens WS. Consider TTL eviction.",
+    "Frontend: handleSimulateSpeaking branches on otherRiders.length but never transmits to the room when connected — primary cause of PHASE 8 failure.",
+    "All testIDs present and stable. No 700+ LOC files. No MongoDB/_id concerns (no DB in backend).",
+    "QR uses react-native-qrcode-svg with value velovoice://ride/<code> — value uses code from props which is non-null inside connected branch; deep link scheme not registered in app.json but acceptable for prototype."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ride_backend.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "~80% (PHASE 1,2,4,5,6,10,11 pass; PHASE 7 fail, PHASE 8 fail, PHASE 9 partial)"},
+  "seed_data_creation": "None (ride codes generated per test run, rooms self-clean on disconnect)",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend WS relay confirmed working at both REST and WS level via /app/backend/tests/test_ride_backend.py (pytest+websocket-client). Two browser contexts in one Playwright run successfully simulate two phones. Use page.locator(...).dispatch_event('click') for buttons inside the RideConnectSheet — TouchableOpacity targets sometimes report 'outside viewport' for force=True clicks because the Modal is overlaid full-screen on web. Phase-by-phase results captured in iteration_3 test_report. Bugs are FRONTEND-only (volume sync wiring + simulate-speaking transmission); backend is solid.",
+  "rca_of_issue": "PHASE 8 (speaking sync): handleSimulateSpeaking in /app/frontend/app/index.tsx has two branches. When otherRiders.length===0 it sets setLocalSpeaking(true) which the useEffect [localSpeaking, ride] picks up and calls ride.sendSpeaking(true). But when otherRiders.length>0 it skips localSpeaking and only sets a local simulatedSpeakerId — nothing is ever sent over the WebSocket. Repro: Device A creates ride, Device B joins, Device A taps simulate-speaking-btn → no WS frame leaves A; B's RemoteRider.speaking stays false; B's GroupRideCard never renders speaking-indicator. Fix: always setLocalSpeaking(true) (and clear after 3s) when connected, in addition to or instead of simulatedSpeakerId. PHASE 7 (volume sync): A→B not arriving. Verify in browser console that 'music_volume' messages are received on B (add temporary console.log in ws.onmessage) and that ride.setOnRemoteVolume is invoked. Likely the issue is the slider in NowStreamingCard either (a) only fires onSlidingComplete (not onValueChange) on web — and the wired prop is the wrong one — or (b) the dep array in the index.tsx effect that calls ride.setOnRemoteMusic/Volume captures a stale closure due to ride object identity churn; using a useRef-stable cb registration would be safer."
+}
