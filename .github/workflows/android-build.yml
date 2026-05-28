@@ -1,7 +1,7 @@
-name: Remote Android APK Build
+name: Remote Expo Android Build
 
 on:
-  workflow_dispatch: # Allows you to manually click "Run" from your browser
+  workflow_dispatch:
 
 jobs:
   build-android:
@@ -17,19 +17,26 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Gradle Cache
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: './package.json'
 
       - name: Install JavaScript Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Make Gradle Executable
+      - name: Install Expo CLI Globally
+        run: npm install -g expo-cli
+
+      - name: Run Expo Prebuild (Generates Android Directory)
+        run: npx expo prebuild --platform android
+
+      - name: Set up Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Generated Gradle Executable
         run: cd android && chmod +x ./gradlew
 
       - name: Build Android Unsigned Release APK
